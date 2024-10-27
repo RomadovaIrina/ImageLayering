@@ -1,6 +1,9 @@
 ﻿#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <vector>
+#include <fstream>
 
 
 cv::Vec3f convert_pix(cv::Vec3b& pix) {
@@ -38,9 +41,60 @@ cv::Mat make_Linear(const cv::Mat& img) {
 
 }
 
+cv::Mat goToLAB(const cv::Mat& linImg) {
+    cv::Mat labImg;
+    cv::cvtColor(linImg, labImg, cv::COLOR_RGB2Lab);
+    return labImg;
+}
+
+
+cv::Mat getAB(const cv::Mat& labImg) {
+    cv::Mat abImg(labImg.size(), CV_32FC2);
+    for (int row = 0; row < abImg.rows; row += 1) {
+        for (int col = 0; col < abImg.cols; col += 1) {
+            cv::Vec3f labPix = labImg.at<cv::Vec3f>(row, col);
+            float a = labPix[1];
+            float b = labPix[2];
+            abImg.at<cv::Vec2f>(row, col) = cv::Vec2f(a, b);
+        }
+    }
+    return abImg;
+}
+
+float getAngle(float x, float y) {
+    float angle = std::atan2(y, x);
+    if (angle < 0) {
+        angle += 2 * CV_PI;
+    }
+    return angle;
+}
+
+std::vector<float> extractDataForHist(const cv::Mat& abImg) {
+    std::vector<float> histData;
+    for (int row = 0; row < abImg.rows; row += 1) {
+        for (int col = 0; col < abImg.cols; col += 1) {
+            cv::Vec2f abPix = abImg.at<cv::Vec2f>(row, col);
+            float hue = getAngle(abPix[1], abPix[0]);
+            histData.push_back(hue);
+        }
+    }
+    return histData;
+}
+
+
+void exportCSV(const std::vector<float>& data) {
+    std::ofstream file("outputFun.csv");
+    if (file.is_open()) {
+        for (float num : data) {
+            file << num << "\n";
+        }
+        file.close();
+        std::cout << "done";
+    }
+}
 
 int main() {
-    cv::Mat image = cv::imread("../test/2.png");
+    cv::Mat image = cv::imread("../test/funny.jpg");
 
     cv::Mat linearImage = make_Linear(image);
 
@@ -48,10 +102,20 @@ int main() {
     normalize(linearImage, normalizedImage, 0, 255, cv::NORM_MINMAX);
     normalizedImage.convertTo(normalizedImage, CV_8UC3);
 
+    cv::Mat LAB = goToLAB(linearImage);
+
+    cv::Mat normalizedLAB;
+    normalize(LAB, normalizedLAB, 0, 255, cv::NORM_MINMAX);
+    normalizedLAB.convertTo(normalizedLAB, CV_8UC3);
 
     imshow("Original image", image);
     imshow("Lin RGB image", normalizedImage);
+    imshow("LAB", normalizedLAB);
 
     cv::waitKey(0);
+
+    cv::Mat ab = getAB(LAB);
+    std::vector<float> saturation = extractDataForHist(ab);
+    exportCSV(saturation);
     return 0;
 }
